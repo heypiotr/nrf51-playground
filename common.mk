@@ -28,12 +28,11 @@ SRCS := \
 	$(SEGGER_RTT)/RTT/SEGGER_RTT.c $(SEGGER_RTT)/RTT/SEGGER_RTT_printf.c \
 	$(SRCS)
 
-OUT := _build/$(BIN)
+BUILD := _build
+OUT := $(BUILD)/$(BIN)
 
 OBJS := $(patsubst %,$(OUT)/%.o,$(basename $(SRCS)))
 DEPS := $(patsubst %,$(OUT)/%.d,$(basename $(SRCS)))
-
-$(shell mkdir -p $(dir $(OBJS)) >/dev/null)
 
 CFLAGS := \
 	-Wall -Werror \
@@ -57,7 +56,7 @@ POSTCOMPILE = mv -f $(OUT)/$*.Td $(OUT)/$*.d
 
 all : $(OUT)/$(BIN).hex
 
-.PHONY: flash flash_softdevice clean
+.PHONY: flash flash_softdevice clean build_dirs
 
 flash: $(OUT)/$(BIN).hex
 	nrfjprog --program $< -f nrf51 --sectorerase
@@ -68,7 +67,10 @@ flash_softdevice:
 	nrfjprog --reset -f nrf51
 
 clean:
-	$(RM) -r $(OUT)
+	$(RM) -r $(BUILD)
+
+build_dirs:
+	mkdir -p $(dir $(OBJS))
 
 $(OUT)/$(BIN).hex : $(OUT)/$(BIN)
 	$(OBJCOPY) -O ihex $< $@
@@ -77,12 +79,12 @@ $(OUT)/$(BIN) : $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 $(OUT)/%.o : %.c
-$(OUT)/%.o : %.c $(OUT)/%.d
+$(OUT)/%.o : %.c $(OUT)/%.d build_dirs
 	$(CC) $(DEPFLAGS) $(CFLAGS) -c -o $@ $<
 	$(POSTCOMPILE)
 
 $(OUT)/%.o : %.S
-$(OUT)/%.o : %.S $(OUT)/%.d
+$(OUT)/%.o : %.S $(OUT)/%.d build_dirs
 	$(CC) $(DEPFLAGS) $(ASMFLAGS) -c -o $@ $<
 	$(POSTCOMPILE)
 
