@@ -1,0 +1,7 @@
+var structble__gap__whitelist__t =
+[
+    [ "addr_count", "structble__gap__whitelist__t.html#a8f7d372587ed29005dbfd515103fa6fd", null ],
+    [ "irk_count", "structble__gap__whitelist__t.html#a21922578ee2df66befd41e968f8d5af1", null ],
+    [ "pp_addrs", "structble__gap__whitelist__t.html#a9316d95519c47512389b4696376556d0", null ],
+    [ "pp_irks", "structble__gap__whitelist__t.html#ab78ecf15e25742a5ea56377cef1a8603", null ]
+];

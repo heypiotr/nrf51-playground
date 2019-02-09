@@ -1,0 +1,4 @@
+var searchData=
+[
+  ['clock_20accuracy',['Clock accuracy',['../group___n_r_f___c_l_o_c_k___l_f___x_t_a_l___a_c_c_u_r_a_c_y.html',1,'']]]
+];
