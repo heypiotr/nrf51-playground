@@ -23,9 +23,10 @@ S130_HEX := $(PLAYGROUND_ROOT)/s130_nrf51_2.0.1_softdevice.hex
 S130_INCLUDE := $(PLAYGROUND_ROOT)/s130_nrf51_2.0.1_include
 SEGGER_RTT := $(PLAYGROUND_ROOT)/segger_rtt_v640b
 
-SRCS += \
+SRCS := \
 	$(NRF5_MDK)/system_nrf51.c $(NRF5_MDK)/gcc_startup_nrf51.S \
-	$(SEGGER_RTT)/RTT/SEGGER_RTT.c $(SEGGER_RTT)/RTT/SEGGER_RTT_printf.c
+	$(SEGGER_RTT)/RTT/SEGGER_RTT.c $(SEGGER_RTT)/RTT/SEGGER_RTT_printf.c \
+	$(SRCS)
 
 OUT := _build/$(BIN)
 
