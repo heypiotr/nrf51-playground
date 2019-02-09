@@ -37,7 +37,7 @@ DEPS := $(patsubst %,$(OUT)/%.d,$(basename $(SRCS)))
 CFLAGS := \
 	-Wall -Werror \
 	-mcpu=cortex-m0 -mabi=aapcs \
-	-ffunction-sections -fdata-sections -Os -flto \
+	-ffunction-sections -fdata-sections -Og -g3 -flto \
 	-I $(NRF5_MDK) -I $(S130_INCLUDE) \
 	-I $(NRF5_SDK)/components/toolchain/cmsis/include \
 	-I $(SEGGER_RTT)/RTT \
@@ -47,7 +47,7 @@ LDFLAGS := \
 	-mcpu=cortex-m0 -mabi=aapcs \
 	--specs=nano.specs -lc -lnosys \
 	-Wl,-Map=$(OUT)/$(BIN).map \
-	-Wl,--gc-sections -Os -flto \
+	-Wl,--gc-sections \
 	-L $(NRF5_MDK) -T config.ld
 
 DEPFLAGS = -MT $@ -MD -MP -MF $(OUT)/$*.Td
