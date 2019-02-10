@@ -70,7 +70,7 @@ clean:
 	$(RM) -r $(BUILD)
 
 build_dirs:
-	mkdir -p $(dir $(OBJS))
+	@mkdir -p $(dir $(OBJS))
 
 $(OUT)/$(BIN).hex : $(OUT)/$(BIN)
 	$(OBJCOPY) -O ihex $< $@
@@ -79,12 +79,12 @@ $(OUT)/$(BIN) : $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 $(OUT)/%.o : %.c
-$(OUT)/%.o : %.c $(OUT)/%.d build_dirs
+$(OUT)/%.o : %.c $(OUT)/%.d | build_dirs
 	$(CC) $(DEPFLAGS) $(CFLAGS) -c -o $@ $<
 	$(POSTCOMPILE)
 
 $(OUT)/%.o : %.S
-$(OUT)/%.o : %.S $(OUT)/%.d build_dirs
+$(OUT)/%.o : %.S $(OUT)/%.d | build_dirs
 	$(CC) $(DEPFLAGS) $(ASMFLAGS) -c -o $@ $<
 	$(POSTCOMPILE)
 
