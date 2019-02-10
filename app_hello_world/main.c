@@ -8,6 +8,8 @@
 
 #include <SEGGER_RTT.h>
 
+#include "P256-cortex-ecdh.h"
+
 nrf_nvic_state_t nrf_nvic_state;
 
 uint32_t err_code;
@@ -100,7 +102,7 @@ void ble_gatts_setup(void) {
             .read = true
         }
     };
-    attr_md.read_perm = (ble_gap_conn_sec_mode_t) { .sm = 1, .lv = 1 };
+    BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&attr_md.read_perm);
     uint8_t battery_level = 0x10;
     attr_char_value = (ble_gatts_attr_t) {
         .p_uuid = &ble_uuid,
@@ -158,6 +160,63 @@ void conn_param_update(uint16_t conn_handle) {
     SEGGER_RTT_printf(0, "sd_ble_gap_conn_param_update: 0x%x\n", err_code);
 }
 
+ble_gap_lesc_p256_pk_t debug_pk = { .pk = {
+    0xe6, 0x9d, 0x35, 0x0e, 0x48, 0x01, 0x03, 0xcc, 0xdb, 0xfd, 0xf4, 0xac,
+    0x11, 0x91, 0xf4, 0xef, 0xb9, 0xa5, 0xf9, 0xe9, 0xa7, 0x83, 0x2c, 0x5e,
+    0x2c, 0xbe, 0x97, 0xf2, 0xd2, 0x03, 0xb0, 0x20, 0x8b, 0xd2, 0x89, 0x15,
+    0xd0, 0x8e, 0x1c, 0x74, 0x24, 0x30, 0xed, 0x8f, 0xc2, 0x45, 0x63, 0x76,
+    0x5c, 0x15, 0x52, 0x5a, 0xbf, 0x9a, 0x32, 0x63, 0x6d, 0xeb, 0x2a, 0x65,
+    0x49, 0x9c, 0x80, 0xdc
+}};
+
+uint8_t debug_sk[] = {
+    0xbd, 0x1a, 0x3c, 0xcd, 0xa6, 0xb8, 0x99, 0x58, 0x99, 0xb7, 0x40, 0xeb,
+    0x7b, 0x60, 0xff, 0x4a, 0x50, 0x3f, 0x10, 0xd2, 0xe3, 0xb3, 0xc9, 0x74,
+    0x38, 0x5f, 0xc5, 0xa3, 0xd4, 0xf6, 0x49, 0x3f
+};
+
+ble_gap_enc_key_t own_enc_key;
+ble_gap_id_key_t peer_id_key;
+ble_gap_lesc_p256_pk_t peer_pk;
+
+ble_gap_sec_keyset_t sec_keyset = {
+    .keys_own = {
+        .p_enc_key = &own_enc_key,
+        .p_pk = &debug_pk
+    },
+    .keys_peer = {
+        .p_id_key = &peer_id_key,
+        .p_pk = &peer_pk
+    }
+};
+
+void sec_params_reply(uint16_t conn_handle) {
+    ble_gap_sec_params_t sec_params = {
+        .bond = 0,
+        .mitm = 0,
+        .lesc = 1,
+        .keypress = 0,
+        .io_caps = BLE_GAP_IO_CAPS_NONE,
+        .oob = 0,
+        .min_key_size = 7,
+        .max_key_size = 16,
+        .kdist_own = { .enc = 0, .id = 0, .sign = 0, .link = 0 },
+        .kdist_peer = { .enc = 0, .id = 1, .sign = 0, .link = 0 }
+    };
+    err_code = sd_ble_gap_sec_params_reply(conn_handle, BLE_GAP_SEC_STATUS_SUCCESS, &sec_params, &sec_keyset);
+    SEGGER_RTT_printf(0, "sd_ble_gap_sec_params_reply: 0x%x\n", err_code);
+}
+
+void lesc_dhkey_reply(uint16_t conn_handle) {
+    ble_gap_lesc_dhkey_t dhkey;
+    if (!P256_ecdh_shared_secret(dhkey.key, peer_pk.pk, debug_sk)) {
+        SEGGER_RTT_printf(0, "P256_ecdh_shared_secret FAILED\n");
+    } else {
+        err_code = sd_ble_gap_lesc_dhkey_reply(conn_handle, &dhkey);
+        SEGGER_RTT_printf(0, "sd_ble_gap_lesc_dhkey_reply: 0x%x\n", err_code);
+    }
+}
+
 void print_data(uint8_t *data, uint16_t len) {
     for (int i = 0; i < len; i++) {
         SEGGER_RTT_printf(0, "%02x", data[i]);
@@ -169,6 +228,27 @@ void print_gap_conn_params(ble_gap_conn_params_t conn_params) {
     SEGGER_RTT_printf(0, "\tconn_params.max_conn_interval: %u units\n", conn_params.max_conn_interval);
     SEGGER_RTT_printf(0, "\tconn_params.slave_latency: %u\n", conn_params.slave_latency);
     SEGGER_RTT_printf(0, "\tconn_params.conn_sup_timeout: %u ms\n", conn_params.conn_sup_timeout * 10);
+}
+
+void print_gap_sec_kdist(ble_gap_sec_kdist_t sec_kdist) {
+    SEGGER_RTT_printf(0, "\t\tsec_kdist.enc: %u\n", sec_kdist.enc);
+    SEGGER_RTT_printf(0, "\t\tsec_kdist.id: %u\n", sec_kdist.id);
+    SEGGER_RTT_printf(0, "\t\tsec_kdist.sign: %u\n", sec_kdist.sign);
+    SEGGER_RTT_printf(0, "\t\tsec_kdist.link: %u\n", sec_kdist.link);
+}
+
+void print_gap_sec_params(ble_gap_sec_params_t sec_params) {
+    SEGGER_RTT_printf(0, "\tsec_params.bond: %u\n", sec_params.bond);
+    SEGGER_RTT_printf(0, "\tsec_params.mitm: %u\n", sec_params.mitm);
+    SEGGER_RTT_printf(0, "\tsec_params.lesc: %u\n", sec_params.lesc);
+    SEGGER_RTT_printf(0, "\tsec_params.keypress: %u\n", sec_params.keypress);
+    SEGGER_RTT_printf(0, "\tsec_params.io_caps: %u\n", sec_params.io_caps);
+    SEGGER_RTT_printf(0, "\tsec_params.min_key_size: %u\n", sec_params.min_key_size);
+    SEGGER_RTT_printf(0, "\tsec_params.max_key_size: %u\n", sec_params.max_key_size);
+    SEGGER_RTT_printf(0, "\tsec_params.kdist_own:\n");
+    print_gap_sec_kdist(sec_params.kdist_own);
+    SEGGER_RTT_printf(0, "\tsec_params.kdist_peer:\n");
+    print_gap_sec_kdist(sec_params.kdist_peer);
 }
 
 void print_gap_evt_connected(uint16_t conn_handle, ble_gap_evt_connected_t p) {
@@ -194,6 +274,57 @@ void print_gap_evt_conn_param_update(uint16_t conn_handle, ble_gap_evt_conn_para
     SEGGER_RTT_printf(0, "ble_gap_evt_conn_param_update:\n");
     SEGGER_RTT_printf(0, "\tconn_handle: 0x%x\n", conn_handle);
     print_gap_conn_params(p.conn_params);
+}
+
+void print_gap_evt_sec_params_request(uint16_t conn_handle, ble_gap_evt_sec_params_request_t p) {
+    SEGGER_RTT_printf(0, "ble_gap_evt_sec_params_request:\n");
+    SEGGER_RTT_printf(0, "\tconn_handle: 0x%x\n", conn_handle);
+    print_gap_sec_params(p.peer_params);
+}
+
+void print_gap_evt_lesc_dhkey_request(uint16_t conn_handle, ble_gap_evt_lesc_dhkey_request_t p) {
+    SEGGER_RTT_printf(0, "ble_gap_evt_lesc_dhkey_request:\n");
+    SEGGER_RTT_printf(0, "\tconn_handle: 0x%x\n", conn_handle);
+    SEGGER_RTT_printf(0, "\toobd_req: %u\n", p.oobd_req);
+
+    SEGGER_RTT_printf(0, "\tp_pk_peer: ");
+    print_data(p.p_pk_peer->pk, 64);
+    SEGGER_RTT_printf(0, "\n");
+}
+
+void print_gap_evt_auth_status(uint16_t conn_handle, ble_gap_evt_auth_status_t p) {
+    SEGGER_RTT_printf(0, "ble_gap_evt_auth_status:\n");
+    SEGGER_RTT_printf(0, "\tconn_handle: 0x%x\n", conn_handle);
+    SEGGER_RTT_printf(0, "\tauth_status: 0x%x\n", p.auth_status);
+    SEGGER_RTT_printf(0, "\terror_src: 0x%x\n", p.error_src);
+    SEGGER_RTT_printf(0, "\tbonded: %u\n", p.bonded);
+    SEGGER_RTT_printf(0, "\tsm1_levels: lv1: %u, lv2: %u, lv3: %u, lv4: %u\n",
+        p.sm1_levels.lv1, p.sm1_levels.lv2, p.sm1_levels.lv3, p.sm1_levels.lv4);
+    SEGGER_RTT_printf(0, "\tsm2_levels: lv1: %u, lv2: %u, lv3: %u, lv4: %u\n",
+        p.sm2_levels.lv1, p.sm2_levels.lv2, p.sm2_levels.lv3, p.sm2_levels.lv4);
+    SEGGER_RTT_printf(0, "\tkdist_own:\n");
+    print_gap_sec_kdist(p.kdist_own);
+    SEGGER_RTT_printf(0, "\tkdist_peer:\n");
+    print_gap_sec_kdist(p.kdist_peer);
+
+    SEGGER_RTT_printf(0, "\tpeer_id_key:\n");
+    SEGGER_RTT_printf(0, "\t\tid_addr_info.addr_type: 0x%x\n", peer_id_key.id_addr_info.addr_type);
+    SEGGER_RTT_printf(0, "\t\tid_addr_info.addr: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        peer_id_key.id_addr_info.addr[0], peer_id_key.id_addr_info.addr[1], peer_id_key.id_addr_info.addr[2],
+        peer_id_key.id_addr_info.addr[3], peer_id_key.id_addr_info.addr[4], peer_id_key.id_addr_info.addr[5]);
+
+    SEGGER_RTT_printf(0, "\town_enc_key:\n");
+    SEGGER_RTT_printf(0, "\t\tenc_info: lesc: %u, auth: %u, ltk_len: %u\n",
+        own_enc_key.enc_info.lesc, own_enc_key.enc_info.auth, own_enc_key.enc_info.ltk_len);
+    SEGGER_RTT_printf(0, "\t\tmaster_id: ediv: %u, rand[0]: %u\n",
+        own_enc_key.master_id.ediv, own_enc_key.master_id.rand[0]);
+}
+
+void print_gap_evt_conn_sec_update(uint16_t conn_handle, ble_gap_evt_conn_sec_update_t p) {
+    SEGGER_RTT_printf(0, "ble_gap_evt_conn_sec_update:\n");
+    SEGGER_RTT_printf(0, "\tconn_handle: 0x%x\n", conn_handle);
+    SEGGER_RTT_printf(0, "\tconn_sec.sec_mode: sm: %u, lv: %u\n", p.conn_sec.sec_mode.sm, p.conn_sec.sec_mode.lv);
+    SEGGER_RTT_printf(0, "\tconn_sec.encr_key_size: %u\n", p.conn_sec.encr_key_size);
 }
 
 void print_gatts_evt_write(uint16_t conn_handle, ble_gatts_evt_write_t p) {
@@ -250,7 +381,7 @@ int main(void) {
                 switch (h.evt_id) {
                     case BLE_GAP_EVT_CONNECTED:
                     print_gap_evt_connected(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.connected);
-                    conn_param_update(e.evt.gap_evt.conn_handle);
+                    // conn_param_update(e.evt.gap_evt.conn_handle);
                     break;
 
                     case BLE_GAP_EVT_DISCONNECTED:
@@ -260,6 +391,24 @@ int main(void) {
 
                     case BLE_GAP_EVT_CONN_PARAM_UPDATE:
                     print_gap_evt_conn_param_update(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.conn_param_update);
+                    break;
+
+                    case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
+                    print_gap_evt_sec_params_request(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.sec_params_request);
+                    sec_params_reply(e.evt.gap_evt.conn_handle);
+                    break;
+
+                    case BLE_GAP_EVT_LESC_DHKEY_REQUEST:
+                    print_gap_evt_lesc_dhkey_request(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.lesc_dhkey_request);
+                    lesc_dhkey_reply(e.evt.gap_evt.conn_handle);
+                    break;
+
+                    case BLE_GAP_EVT_AUTH_STATUS:
+                    print_gap_evt_auth_status(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.auth_status);
+                    break;
+
+                    case BLE_GAP_EVT_CONN_SEC_UPDATE:
+                    print_gap_evt_conn_sec_update(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.conn_sec_update);
                     break;
 
                     case BLE_GATTS_EVT_WRITE:

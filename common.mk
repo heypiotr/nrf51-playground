@@ -42,7 +42,7 @@ CFLAGS := \
 	-I $(NRF5_SDK)/components/toolchain/cmsis/include \
 	-I $(SEGGER_RTT)/RTT \
 	-D NRF51
-ASMFLAGS :=
+ASMFLAGS := -mcpu=cortex-m0
 LDFLAGS := \
 	-mcpu=cortex-m0 -mabi=aapcs \
 	--specs=nano.specs -lc -lnosys \
