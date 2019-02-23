@@ -72,8 +72,8 @@ void ble_curiosity_check(void) {
 
 void ble_set_name(void) {
     ble_gap_conn_sec_mode_t write_perm = { .sm = 0, .lv = 0 };
-    uint8_t name[] = { 'H', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd' };
-    err_code = sd_ble_gap_device_name_set(&write_perm, name, 11);
+    uint8_t name[] = { 'H', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', ',', ' ', 'h', 'o', 'w', ' ', 'a', 'r', 'e', ' ', 'y', 'o', 'u', ' ', 't', 'o', 'd', 'a', 'y', '?' };
+    err_code = sd_ble_gap_device_name_set(&write_perm, name, 31);
     SEGGER_RTT_printf(0, "sd_ble_gap_device_name_set: 0x%x\n", err_code);
 }
 
@@ -176,15 +176,20 @@ uint8_t debug_sk[] = {
 };
 
 ble_gap_enc_key_t own_enc_key;
+ble_gap_id_key_t own_id_key;
+
+ble_gap_enc_key_t peer_enc_key;
 ble_gap_id_key_t peer_id_key;
 ble_gap_lesc_p256_pk_t peer_pk;
 
 ble_gap_sec_keyset_t sec_keyset = {
     .keys_own = {
         .p_enc_key = &own_enc_key,
+        .p_id_key = &own_id_key,
         .p_pk = &debug_pk
     },
     .keys_peer = {
+        .p_enc_key = &peer_enc_key,
         .p_id_key = &peer_id_key,
         .p_pk = &peer_pk
     }
@@ -194,17 +199,22 @@ void sec_params_reply(uint16_t conn_handle) {
     ble_gap_sec_params_t sec_params = {
         .bond = 0,
         .mitm = 0,
-        .lesc = 1,
+        .lesc = 0,
         .keypress = 0,
         .io_caps = BLE_GAP_IO_CAPS_NONE,
         .oob = 0,
         .min_key_size = 7,
         .max_key_size = 16,
-        .kdist_own = { .enc = 0, .id = 0, .sign = 0, .link = 0 },
-        .kdist_peer = { .enc = 0, .id = 1, .sign = 0, .link = 0 }
+        .kdist_own = { .enc = 1, .id = 1, .sign = 0, .link = 0 },
+        .kdist_peer = { .enc = 1, .id = 1, .sign = 0, .link = 0 }
     };
     err_code = sd_ble_gap_sec_params_reply(conn_handle, BLE_GAP_SEC_STATUS_SUCCESS, &sec_params, &sec_keyset);
     SEGGER_RTT_printf(0, "sd_ble_gap_sec_params_reply: 0x%x\n", err_code);
+}
+
+void sec_info_reply(uint16_t conn_handle) {
+    err_code = sd_ble_gap_sec_info_reply(conn_handle, &own_enc_key.enc_info, NULL, NULL);
+    SEGGER_RTT_printf(0, "sd_ble_gap_sec_info_reply: 0x%x\n", err_code);
 }
 
 void lesc_dhkey_reply(uint16_t conn_handle) {
@@ -282,14 +292,24 @@ void print_gap_evt_sec_params_request(uint16_t conn_handle, ble_gap_evt_sec_para
     print_gap_sec_params(p.peer_params);
 }
 
+void print_gap_evt_sec_info_request(uint16_t conn_handle, ble_gap_evt_sec_info_request_t p) {
+    SEGGER_RTT_printf(0, "ble_gap_evt_sec_info_request:\n");
+    SEGGER_RTT_printf(0, "\tconn_handle: 0x%x\n", conn_handle);
+    SEGGER_RTT_printf(0, "\tpeer_addr.addr_type: 0x%x\n", p.peer_addr.addr_type);
+    SEGGER_RTT_printf(0, "\tpeer_addr.addr: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        p.peer_addr.addr[0], p.peer_addr.addr[1], p.peer_addr.addr[2],
+        p.peer_addr.addr[3], p.peer_addr.addr[4], p.peer_addr.addr[5]);
+    SEGGER_RTT_printf(0, "\tmaster_id: ediv: %u, rand[0]: %u\n", p.master_id.ediv, p.master_id.rand[0]);
+    SEGGER_RTT_printf(0, "\tenc_info: %u\n", p.enc_info);
+    SEGGER_RTT_printf(0, "\tid_info: %u\n", p.id_info);
+    SEGGER_RTT_printf(0, "\tsign_info: %u\n", p.sign_info);
+}
+
 void print_gap_evt_lesc_dhkey_request(uint16_t conn_handle, ble_gap_evt_lesc_dhkey_request_t p) {
     SEGGER_RTT_printf(0, "ble_gap_evt_lesc_dhkey_request:\n");
     SEGGER_RTT_printf(0, "\tconn_handle: 0x%x\n", conn_handle);
     SEGGER_RTT_printf(0, "\toobd_req: %u\n", p.oobd_req);
-
-    SEGGER_RTT_printf(0, "\tp_pk_peer: ");
-    print_data(p.p_pk_peer->pk, 64);
-    SEGGER_RTT_printf(0, "\n");
+    SEGGER_RTT_printf(0, "\tp_pk_peer: "); print_data(p.p_pk_peer->pk, 64); SEGGER_RTT_printf(0, "\n");
 }
 
 void print_gap_evt_auth_status(uint16_t conn_handle, ble_gap_evt_auth_status_t p) {
@@ -307,17 +327,37 @@ void print_gap_evt_auth_status(uint16_t conn_handle, ble_gap_evt_auth_status_t p
     SEGGER_RTT_printf(0, "\tkdist_peer:\n");
     print_gap_sec_kdist(p.kdist_peer);
 
+    SEGGER_RTT_printf(0, "\town_enc_key:\n");
+    SEGGER_RTT_printf(0, "\t\tenc_info: lesc: %u, auth: %u, ltk_len: %u\n",
+        own_enc_key.enc_info.lesc, own_enc_key.enc_info.auth, own_enc_key.enc_info.ltk_len);
+    if (own_enc_key.enc_info.ltk_len > 0) {
+        SEGGER_RTT_printf(0, "\t\tltk: "); print_data(own_enc_key.enc_info.ltk, own_enc_key.enc_info.ltk_len); SEGGER_RTT_printf(0, "\n");
+    }
+    SEGGER_RTT_printf(0, "\t\tmaster_id: ediv: %u, rand[0]: %u\n",
+        own_enc_key.master_id.ediv, own_enc_key.master_id.rand[0]);
+
+    SEGGER_RTT_printf(0, "\town_id_key:\n");
+    SEGGER_RTT_printf(0, "\t\t"); print_data(own_id_key.id_info.irk, 16); SEGGER_RTT_printf(0, "\n");
+    SEGGER_RTT_printf(0, "\t\tid_addr_info.addr_type: 0x%x\n", own_id_key.id_addr_info.addr_type);
+    SEGGER_RTT_printf(0, "\t\tid_addr_info.addr: %02x:%02x:%02x:%02x:%02x:%02x\n",
+        own_id_key.id_addr_info.addr[0], own_id_key.id_addr_info.addr[1], own_id_key.id_addr_info.addr[2],
+        own_id_key.id_addr_info.addr[3], own_id_key.id_addr_info.addr[4], own_id_key.id_addr_info.addr[5]);
+
+    SEGGER_RTT_printf(0, "\tpeer_enc_key:\n");
+    SEGGER_RTT_printf(0, "\t\tenc_info: lesc: %u, auth: %u, ltk_len: %u\n",
+        peer_enc_key.enc_info.lesc, peer_enc_key.enc_info.auth, peer_enc_key.enc_info.ltk_len);
+    if (peer_enc_key.enc_info.ltk_len > 0) {
+        SEGGER_RTT_printf(0, "\t\tltk: "); print_data(peer_enc_key.enc_info.ltk, peer_enc_key.enc_info.ltk_len); SEGGER_RTT_printf(0, "\n");
+    }
+    SEGGER_RTT_printf(0, "\t\tmaster_id: ediv: %u, rand[0]: %u\n",
+        peer_enc_key.master_id.ediv, peer_enc_key.master_id.rand[0]);
+
     SEGGER_RTT_printf(0, "\tpeer_id_key:\n");
+    SEGGER_RTT_printf(0, "\t\t"); print_data(peer_id_key.id_info.irk, 16); SEGGER_RTT_printf(0, "\n");
     SEGGER_RTT_printf(0, "\t\tid_addr_info.addr_type: 0x%x\n", peer_id_key.id_addr_info.addr_type);
     SEGGER_RTT_printf(0, "\t\tid_addr_info.addr: %02x:%02x:%02x:%02x:%02x:%02x\n",
         peer_id_key.id_addr_info.addr[0], peer_id_key.id_addr_info.addr[1], peer_id_key.id_addr_info.addr[2],
         peer_id_key.id_addr_info.addr[3], peer_id_key.id_addr_info.addr[4], peer_id_key.id_addr_info.addr[5]);
-
-    SEGGER_RTT_printf(0, "\town_enc_key:\n");
-    SEGGER_RTT_printf(0, "\t\tenc_info: lesc: %u, auth: %u, ltk_len: %u\n",
-        own_enc_key.enc_info.lesc, own_enc_key.enc_info.auth, own_enc_key.enc_info.ltk_len);
-    SEGGER_RTT_printf(0, "\t\tmaster_id: ediv: %u, rand[0]: %u\n",
-        own_enc_key.master_id.ediv, own_enc_key.master_id.rand[0]);
 }
 
 void print_gap_evt_conn_sec_update(uint16_t conn_handle, ble_gap_evt_conn_sec_update_t p) {
@@ -396,6 +436,11 @@ int main(void) {
                     case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
                     print_gap_evt_sec_params_request(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.sec_params_request);
                     sec_params_reply(e.evt.gap_evt.conn_handle);
+                    break;
+
+                    case BLE_GAP_EVT_SEC_INFO_REQUEST:
+                    print_gap_evt_sec_info_request(e.evt.gap_evt.conn_handle, e.evt.gap_evt.params.sec_info_request);
+                    sec_info_reply(e.evt.gap_evt.conn_handle);
                     break;
 
                     case BLE_GAP_EVT_LESC_DHKEY_REQUEST:
